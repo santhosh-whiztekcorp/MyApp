@@ -1,10 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { ErrorBoundary } from '../components/error-boundary';
 
 export function OnboardingScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Onboarding Screen</Text>
-    </View>
+    <ErrorBoundary>
+      <View style={styles.container}>
+        <Text style={styles.text}>Onboarding Screen</Text>
+      </View>
+    </ErrorBoundary>
   );
 }
 
