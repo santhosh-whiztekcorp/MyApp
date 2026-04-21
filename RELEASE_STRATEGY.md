@@ -1,443 +1,371 @@
-# Release Strategy — Dev, QA & Production
+# Release Strategy — MyApp
 
-This document covers the complete release strategy for MyApp including branching, versioning, bundle IDs, secrets management, build management, and rollbacks for both Android and iOS.
+This document covers the complete release strategy for MyApp including branching, versioning, environment workflows, CI/CD flow, and rollbacks for both Android and iOS.
 
 ---
 
-## 1. Branching Strategy
+## 1. Branch Structure
 
-Use a single `main` branch with **short-lived feature branches** and **environment-specific tags**. Do NOT maintain separate long-lived branches per environment — they cause merge conflicts and drift.
-
-```
-main                        ← always production-ready code
-├── feature/login           ← developer feature branch
-├── feature/payment         ← developer feature branch
-├── fix/crash-on-launch     ← hotfix branch
-└── release/1.2.0           ← optional release branch for stabilization
-```
-
-### Flow
+### Structure
 
 ```
-feature branch
-    └── PR → main
-              └── tag v1.2.0-dev    ← triggers Dev build
-              └── tag v1.2.0-qa     ← triggers QA build
-              └── tag v1.2.0        ← triggers Production build
+repo/
+├── development-frontend    ← frontend source of truth
+└── development-backend     ← backend (separate, not covered here)
+```
+
+### Branch Naming
+
+```
+feature/login
+feature/payment
+bugfix/crash-on-launch
+bugfix/qa-login-bug
 ```
 
 ### Rules
 
-| Branch      | Purpose                          | Who pushes     |
-| ----------- | -------------------------------- | -------------- |
-| `main`      | Production-ready code            | PR merges only |
-| `feature/*` | New features                     | Developers     |
-| `fix/*`     | Bug fixes                        | Developers     |
-| `release/*` | Release stabilization (optional) | Lead developer |
+```
+✅ Always create feature/bugfix branches FROM development-frontend
+✅ Always merge back TO development-frontend via PR
+✅ Never push directly to development-frontend
+✅ development-frontend must always be in a buildable state
+```
 
 ---
 
 ## 2. Versioning
 
-React Native has two version systems — keep them in sync manually or via script.
+### Two Numbers to Track
 
-### Version Format
+|               | What                                                                      | Example |
+| ------------- | ------------------------------------------------------------------------- | ------- |
+| `versionName` | Human readable version                                                    | 1.0.2   |
+| `buildNumber` | Auto incrementing integer — fetched from App Store Connect and Play Store | 6       |
+
+### Format
 
 ```
-vMAJOR.MINOR.PATCH
+MAJOR.MINOR.PATCH
 
-v1.0.0    ← first release
-v1.1.0    ← new features
-v1.1.1    ← bug fix
-v2.0.0    ← breaking change
+1.0.0   ← first release
+1.0.1   ← bug fix
+1.1.0   ← new feature
+2.0.0   ← breaking change
 ```
 
-### Android — `android/app/build.gradle`
+### Tag Naming
 
-```groovy
-android {
-    defaultConfig {
-        versionCode 10          // ← increment by 1 every build (Play Store requires this)
-        versionName "1.2.0"     // ← human readable version
-    }
-}
+```
+v1.0.0    ← first prod release
+v1.0.1    ← patch
+v1.1.0    ← minor
+v2.0.0    ← major
 ```
 
-|             | `versionCode`              | `versionName`        |
-| ----------- | -------------------------- | -------------------- |
-| What it is  | Integer, e.g. 10           | String, e.g. "1.2.0" |
-| Who sees it | Play Store internally      | Users see this       |
-| Rule        | Must increase every upload | Free format          |
+---
 
-### iOS — `ios/MyApp/Info.plist`
+## 3. Workflows
+
+### 4.1 Development
+
+All development work happens locally. No CI/CD is involved at this stage.
+
+```bash
+# run debug build locally
+npm run android
+npm run ios
+```
+
+When a feature or bugfix is complete, the developer raises a PR to `development-frontend`.
+
+**Before raising a PR:**
+
+```
+✅ pull latest development-frontend
+✅ resolve all conflicts locally
+✅ code review by at least one other developer
+```
+
+---
+
+### 4.2 QA
+
+Every merge to `development-frontend` automatically triggers a QA build. All developers work on the same branch and QA always tests the latest combined code.
+
+**Build distribution:**
+
+```
+Android → APK → Play Store closed testing
+iOS     → IPA → TestFlight internal
+```
+
+**Multiple developers merging:**
+
+```
+dev1 merges feature/feature1  → QA build 1
+dev2 merges feature/feature2  → QA build 2  (has feature1 + feature2)
+dev1 merges bugfix/qa-bug     → QA build 3  (has everything latest)
+```
+
+**Version across QA iterations:**
+
+```
+QA build 1  → versionName 1.0.2, buildNumber 5
+QA build 2  → versionName 1.0.2, buildNumber 6
+QA build 3  → versionName 1.0.2, buildNumber 7  ← QA approved ✅
+```
+
+Across QA iterations, `versionName` stays the same — only `buildNumber` increments, fetched automatically from TestFlight and Play Store. If a new prod tag is released during a QA cycle, `versionName` is recalculated on the next push.
+
+---
+
+### 4.3 Production
+
+Once QA approves, the developer creates a prod tag on `development-frontend`. This is the only manual action required to trigger a production release.
+
+```bash
+git tag v1.0.2
+git push origin v1.0.2
+```
+
+**Build distribution:**
+
+```
+Android → AAB → Play Store production track
+iOS     → IPA → App Store Connect
+```
+
+**Staged rollout — do not release 100% at once:**
+
+| Day     | Android | iOS                   |
+| ------- | ------- | --------------------- |
+| Day 1   | 10%     | App Store             |
+| Day 2-3 | 50%     | monitor crash reports |
+| Day 4-5 | 100%    | full release          |
+
+---
+
+### 4.4 Trigger Summary
+
+```
+Trigger                        Tag          CI/CD action
+────────────────────────────────────────────────────────
+push to development-frontend   (no tag)     QA build
+QA approved                    v1.0.2       Prod build
+```
+
+---
+
+## 4. CI/CD Flow
+
+### 4.1 QA Build (push to `development-frontend`)
+
+```
+developer merges PR to development-frontend
+                │
+                ▼
+        CI/CD triggered by push
+                │
+                ▼
+        fetch latest prod tag
+        calculate versionName (tag + 0.0.1)
+        fetch latest buildNumber from TestFlight + Play Store
+        increment buildNumber by 1
+        inject versionName + buildNumber into android/local.properties
+        set versionName + buildNumber in iOS project via Xcode build settings
+                │
+                ▼
+        build APK (Android)
+        build IPA (iOS)
+                │
+                ▼
+        upload APK → Play Store closed testing
+        upload IPA → TestFlight internal
+                │
+                ▼
+        QA team notified
+```
+
+**Example:**
+
+```
+latest prod tag = v1.0.1  →  versionName = 1.0.2
+latest prod tag = v1.0.2  →  versionName = 1.0.3
+```
+
+---
+
+### 4.2 Production Build (push tag `v*.*.*`)
+
+```
+developer pushes tag v1.0.2
+                │
+                ▼
+        CI/CD triggered by tag
+                │
+                ▼
+        read versionName from tag (1.0.2)
+        fetch latest buildNumber from App Store + Play Store
+        increment buildNumber by 1
+        inject versionName + buildNumber into android/local.properties
+        set versionName + buildNumber in iOS project via Xcode build settings
+                │
+                ▼
+        build AAB (Android)
+        build IPA (iOS)
+                │
+                ▼
+        upload AAB → Play Store production track
+        submit IPA → App Store Connect
+                │
+                ▼
+        staged rollout begins
+```
+
+**Example:**
+
+```
+latest prod tag = v1.0.1  →  versionName = 1.0.2
+latest prod tag = v1.0.2  →  versionName = 1.0.3
+```
+
+---
+
+### 4.3 Trigger Summary
+
+| Event                             | CI/CD Action                  |
+| --------------------------------- | ----------------------------- |
+| Push to `development-frontend`    | APK + IPA → QA closed testing |
+| Push tag `v*.*.*`                 | AAB + IPA → Production stores |
+| Push to `feature/*` or `bugfix/*` | No build triggered            |
+
+---
+
+### 4.4 Build Outputs
+
+| Environment | Android     | iOS                 | Distribution                            |
+| ----------- | ----------- | ------------------- | --------------------------------------- |
+| Dev         | APK (local) | Run via Xcode / CLI | Direct install                          |
+| QA          | APK         | IPA                 | Play Store closed / TestFlight internal |
+| Prod        | AAB         | IPA                 | Play Store / App Store                  |
+
+---
+
+### 4.5 Emergency Local Build
+
+Use only when CI/CD is unavailable (server down, config broken, limits reached etc).
+
+**Step 1 — Get the latest buildNumber manually**
+
+```
+Android → Play Store Console → App releases → latest build
+iOS     → App Store Connect → TestFlight → latest build number
+```
+
+**Step 2 — Update version values**
+
+Android — update `android/local.properties`:
+
+```properties
+VERSION_NAME=1.0.4
+VERSION_CODE=8        # latest buildNumber + 1
+```
+
+iOS — update `ios/MyApp/Info.plist`:
 
 ```xml
 <key>CFBundleShortVersionString</key>
-<string>1.2.0</string>          <!-- user-facing version -->
+<string>1.0.4</string>
 
 <key>CFBundleVersion</key>
-<string>10</string>             <!-- build number, must increase every upload -->
+<string>8</string>
 ```
 
-### Keep Them in Sync
-
-Update `package.json` version too:
-
-```json
-{
-  "version": "1.2.0"
-}
-```
-
-Use this script to bump all three at once — add to `package.json`:
-
-```json
-{
-  "scripts": {
-    "version:bump": "node scripts/bump-version.js"
-  }
-}
-```
-
-Create `scripts/bump-version.js`:
-
-```javascript
-const fs = require('fs');
-const version = process.argv[2]; // e.g. node bump-version.js 1.2.0
-const buildNumber = process.argv[3]; // e.g. node bump-version.js 1.2.0 11
-
-if (!version || !buildNumber) {
-  console.error('Usage: node bump-version.js <version> <buildNumber>');
-  process.exit(1);
-}
-
-// Update package.json
-const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-pkg.version = version;
-fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-
-// Update android/app/build.gradle
-let gradle = fs.readFileSync('android/app/build.gradle', 'utf8');
-gradle = gradle.replace(/versionCode \d+/, `versionCode ${buildNumber}`);
-gradle = gradle.replace(/versionName ".*"/, `versionName "${version}"`);
-fs.writeFileSync('android/app/build.gradle', gradle);
-
-// Update ios/MyApp/Info.plist
-let plist = fs.readFileSync('ios/MyApp/Info.plist', 'utf8');
-plist = plist.replace(
-  /<key>CFBundleShortVersionString<\/key>\s*<string>.*<\/string>/,
-  `<key>CFBundleShortVersionString</key>\n\t<string>${version}</string>`,
-);
-plist = plist.replace(
-  /<key>CFBundleVersion<\/key>\s*<string>.*<\/string>/,
-  `<key>CFBundleVersion</key>\n\t<string>${buildNumber}</string>`,
-);
-fs.writeFileSync('ios/MyApp/Info.plist', plist);
-
-console.log(`✅ Bumped to version ${version} (build ${buildNumber})`);
-```
-
-Usage:
+**Step 3 — Build**
 
 ```bash
-node scripts/bump-version.js 1.2.0 11
+# Android
+cd android && ./gradlew bundleRelease
+```
+
+```
+# iOS
+Xcode → Product → Archive → Distribute App
 ```
 
 ---
 
-## 3. Bundle IDs / Application IDs per Environment
+## 5. Production Bug — Rollback + Fix Flow
 
-Give each environment a **separate bundle ID** so Dev, QA and Production can be installed on the same device simultaneously.
+### Step 1 — Halt Immediately
 
-### Android — `android/app/build.gradle`
-
-```groovy
-android {
-    defaultConfig {
-        applicationId "com.myapp"           // Production base ID
-    }
-
-    buildTypes {
-        debug {
-            applicationIdSuffix ".dev"      // com.myapp.dev
-        }
-        release {
-            applicationIdSuffix ""          // com.myapp (production)
-        }
-    }
-}
+```
+Play Console   → Release → Production → Halt rollout
+App Store Connect → remove from sale
 ```
 
-For QA — use **Product Flavors**:
+Stops more users receiving the bad build. Done manually via the store consoles.
 
-```groovy
-android {
-    flavorDimensions "environment"
+---
 
-    productFlavors {
-        dev {
-            dimension "environment"
-            applicationIdSuffix ".dev"          // com.myapp.dev
-            resValue "string", "app_name", "MyApp Dev"
-        }
-        qa {
-            dimension "environment"
-            applicationIdSuffix ".qa"           // com.myapp.qa
-            resValue "string", "app_name", "MyApp QA"
-        }
-        production {
-            dimension "environment"
-            applicationIdSuffix ""              // com.myapp
-            resValue "string", "app_name", "MyApp"
-        }
-    }
-}
-```
-
-Build commands per flavor:
+### Step 2 — Revert `development-frontend` to Last Stable
 
 ```bash
-# Dev debug
-cd android && ./gradlew assembleDevDebug
-
-# QA release APK
-cd android && ./gradlew assembleQaRelease
-
-# Production release AAB (Play Store)
-cd android && ./gradlew bundleProductionRelease
+git checkout development-frontend
+git reset --hard v1.0.1
+git push origin development-frontend --force
 ```
 
-### iOS — Bundle IDs in Xcode
-
-Create 3 separate targets or use schemes with different bundle IDs:
-
-| Environment | Bundle ID       |
-| ----------- | --------------- |
-| Dev         | `com.myapp.dev` |
-| QA          | `com.myapp.qa`  |
-| Production  | `com.myapp`     |
-
-In Xcode:
-
-1. Go to **Target → Build Settings → Product Bundle Identifier**
-2. Set per scheme:
-   - `MyApp Dev` scheme → `com.myapp.dev`
-   - `MyApp QA` scheme → `com.myapp.qa`
-   - `MyApp Production` scheme → `com.myapp`
+> ⚠️ Warn ALL developers before force pushing. Every other developer must **stop their current work** and immediately sync their local machine:
+>
+> ```bash
+> git fetch origin
+> git reset --hard origin/development-frontend
+> ```
+>
+> **Do NOT use `git stash`** — if your local changes overlap with the reverted files, popping the stash later will reintroduce the bad code.
+> Instead, manually copy any unrelated local changes to a safe place first, then reset. Re-apply only those unrelated changes after syncing.
 
 ---
 
-## 4. Secrets Management
-
-### What counts as a secret
-
-| Secret                      | Android                        | iOS                  |
-| --------------------------- | ------------------------------ | -------------------- |
-| Keystore + passwords        | `local.properties`             | N/A                  |
-| API keys (maps, push, etc.) | `local.properties` or env vars | Xcode build settings |
-| Signing certificates        | `local.properties`             | Mac Keychain / Xcode |
-| Provisioning profiles       | N/A                            | Xcode auto / manual  |
-
-### Android Secrets — `android/local.properties`
-
-```properties
-# SDK
-sdk.dir=C:\\Users\\Santhosh\\AppData\\Local\\Android\\Sdk
-
-# Release signing
-MYAPP_RELEASE_STORE_FILE=my-release-key.keystore
-MYAPP_RELEASE_KEY_ALIAS=my-key-alias
-MYAPP_RELEASE_STORE_PASSWORD=yourpassword
-MYAPP_RELEASE_KEY_PASSWORD=yourpassword
-
-# API Keys (if needed natively)
-MAPS_API_KEY=your_maps_api_key
-```
-
-### iOS Secrets — Xcode Build Settings
-
-1. Go to **Xcode → Target → Build Settings → User-Defined**
-2. Add keys like `MAPS_API_KEY`
-3. Reference in `Info.plist`:
-
-```xml
-<key>MapsApiKey</key>
-<string>$(MAPS_API_KEY)</string>
-```
-
-Set different values per scheme (Dev / QA / Production).
-
-### Never Commit Secrets
-
-```gitignore
-# .gitignore
-android/local.properties
-android/app/*.keystore
-ios/GoogleService-Info.plist
-.env
-.env.*
-*.p12
-*.mobileprovision
-```
-
----
-
-## 5. Build Management
-
-### Android Build Outputs
-
-| Command                   | Output | Use for     |
-| ------------------------- | ------ | ----------- |
-| `assembleDevDebug`        | `.apk` | Dev testing |
-| `assembleQaRelease`       | `.apk` | QA testing  |
-| `bundleProductionRelease` | `.aab` | Play Store  |
-
-Output location:
-
-```
-android/app/build/outputs/
-├── apk/
-│   ├── dev/debug/app-dev-debug.apk
-│   └── qa/release/app-qa-release.apk
-└── bundle/
-    └── production/release/app-production-release.aab
-```
-
-### iOS Build Outputs
-
-| Method              | Output             | Use for                |
-| ------------------- | ------------------ | ---------------------- |
-| Run via CLI         | Installed directly | Dev testing            |
-| Archive → Ad Hoc    | `.ipa`             | QA testing             |
-| Archive → App Store | Uploaded           | TestFlight / App Store |
-
-### Distribution per Environment
-
-| Environment | Android             | iOS                             |
-| ----------- | ------------------- | ------------------------------- |
-| Dev         | Direct APK / USB    | Xcode direct install            |
-| QA          | APK shared via link | TestFlight internal             |
-| Production  | Play Store          | App Store / TestFlight external |
-
----
-
-## 6. Git Tagging Strategy
-
-Tag every build that goes to QA or Production:
+### Step 3 — Release Last Stable Code as New Version
 
 ```bash
-# QA build
-git tag v1.2.0-qa
-git push origin v1.2.0-qa
-
-# Production build
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
-### Tag Naming Convention
-
-```
-v1.2.0          ← Production release
-v1.2.0-qa       ← QA build
-v1.2.0-dev      ← Dev build (optional)
-v1.2.1-hotfix   ← Emergency fix
-```
-
-This means you can always trace **exactly what code** was in any build.
+CI/CD reads `versionName` from the tag and fetches `buildNumber` automatically from App Store Connect and Play Store. Users on the bad `1.0.2` build receive `1.0.3`, which contains the stable `1.0.1` code.
 
 ---
 
-## 7. Rollbacks
-
-### Android Rollback
-
-Play Store does not allow uploading a lower `versionCode`. Options:
-
-**Option 1 — Staged rollout halt (fastest)**
-
-```
-Play Console → Release → Production →
-Managed publishing → Halt rollout
-```
-
-Stops the bad build from reaching more users.
-
-**Option 2 — Re-release previous version**
-
-- Checkout the previous tag: `git checkout v1.1.0`
-- Bump `versionCode` higher than the bad build (e.g. bad = 11, re-release = 12)
-- Build and upload the AAB again
+### Step 4 — Fix the Actual Bug
 
 ```bash
-git checkout v1.1.0
-# bump versionCode to 12 in build.gradle
-cd android && ./gradlew bundleProductionRelease
-# upload to Play Console
+git checkout development-frontend
+git checkout -b bugfix/production-crash
+
+# cherry pick the bad tag to inspect what introduced the bug
+git cherry-pick v1.0.2
+
+# fix the bug
+
+git push origin bugfix/production-crash
+
+# raise PR on GitHub → get code review → merge to development-frontend
+
+git tag v1.0.4
+git push origin v1.0.4
 ```
-
-### iOS Rollback
-
-App Store does not serve old versions automatically. Options:
-
-**Option 1 — Remove from sale (fastest)**
-
-```
-App Store Connect → MyApp →
-Pricing and Availability → Remove from sale
-```
-
-**Option 2 — Expedited review (re-release old version)**
-
-- Checkout the previous tag: `git checkout v1.1.0`
-- Bump `CFBundleVersion` higher
-- Archive and submit with **expedited review request**
-
-```bash
-git checkout v1.1.0
-# bump build number in Info.plist
-# Archive via Xcode → Distribute → App Store Connect
-```
-
-**Option 3 — TestFlight rollback**
-For TestFlight builds, testers can manually install a previous build from the TestFlight app until it expires (90 days).
 
 ---
 
-## 8. Summary Checklist
+### Full Rollback Timeline
 
-### Before Every QA Build
-
-- [ ] Version bumped (`npm run version:bump`)
-- [ ] Changes merged to `main` via PR
-- [ ] Git tag created (`v1.2.0-qa`)
-- [ ] Build generated and distributed
-
-### Before Every Production Release
-
-- [ ] QA sign-off received
-- [ ] Version and build number bumped
-- [ ] Git tag created (`v1.2.0`)
-- [ ] Android AAB uploaded to Play Console
-- [ ] iOS IPA submitted to App Store Connect
-- [ ] Staged rollout used (don't release 100% at once)
-
-### Staged Rollout Recommendation
-
-| Day     | Android rollout % | iOS                   |
-| ------- | ----------------- | --------------------- |
-| Day 1   | 10%               | TestFlight external   |
-| Day 2-3 | 50%               | Monitor crash reports |
-| Day 4-5 | 100%              | Full release          |
-
----
-
-## 9. Recommended Tools
-
-| Tool                                                                               | Purpose                           |
-| ---------------------------------------------------------------------------------- | --------------------------------- |
-| [Fastlane](https://fastlane.tools)                                                 | Automate builds, signing, uploads |
-| [Firebase App Distribution](https://firebase.google.com/products/app-distribution) | Distribute Dev/QA APK and IPA     |
-| [Sentry](https://sentry.io)                                                        | Crash reporting per environment   |
-| [TestFlight](https://developer.apple.com/testflight/)                              | iOS QA distribution               |
-| [Play Console](https://play.google.com/console)                                    | Android staged rollouts           |
+```
+v1.0.1    ← last stable prod       (buildNumber 4)
+v1.0.2    ← bad prod release       (buildNumber 5) ← bug found, halt rollout
+v1.0.3    ← rollback release       (buildNumber 6) ← 1.0.1 code, users safe
+v1.0.4    ← actual bug fix         (buildNumber 7) ← everyone on fix ✅
+```
