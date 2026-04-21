@@ -3,7 +3,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { RootStackNavigator } from './navigation/RootStackNavigator';
+import { RootStackNavigator } from '@/navigation/RootStackNavigator';
 
 export default function App() {
   const isDarkMode = useColorScheme() === 'dark';

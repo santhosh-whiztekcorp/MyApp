@@ -1,0 +1,61 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/bevellier/Bevellier-Bold.otf",
+      "sha1": "c50c538508d766023076f1b92a71222188887873"
+    },
+    {
+      "path": "src/assets/fonts/bevellier/Bevellier-Medium.otf",
+      "sha1": "9867c5577d76ff1c3b4c6ded6e00b71e4f363f80"
+    },
+    {
+      "path": "src/assets/fonts/bevellier/Bevellier-MediumItalic.otf",
+      "sha1": "783b0bb45b283850093f30899b6c26c0349ac471"
+    },
+    {
+      "path": "src/assets/fonts/bevellier/Bevellier-Semibold.otf",
+      "sha1": "4429c2714931c492864154a2c27bda3692f106b5"
+    },
+    {
+      "path": "src/assets/fonts/fredoka/Fredoka-Medium.ttf",
+      "sha1": "a70a3f8da0909a4dffb7134de7ea66d2258b3dc4"
+    },
+    {
+      "path": "src/assets/fonts/fredoka/Fredoka-Regular.ttf",
+      "sha1": "11dfca6c20e80881050202a6cafb223c03ab3639"
+    },
+    {
+      "path": "src/assets/fonts/fredoka/Fredoka-SemiBold.ttf",
+      "sha1": "d477172068702c00d0095317ac6d64162757dfa4"
+    },
+    {
+      "path": "src/assets/fonts/nunito/Nunito-ExtraBold.ttf",
+      "sha1": "350a651693803cf369b05732920d119fdf557d6f"
+    },
+    {
+      "path": "src/assets/fonts/plusJakartaSans/PlusJakartaSans-Bold.ttf",
+      "sha1": "606f1b32433c9b6902d97c657f9b3a2f89bab582"
+    },
+    {
+      "path": "src/assets/fonts/plusJakartaSans/PlusJakartaSans-BoldItalic.ttf",
+      "sha1": "3c7982159791d551e0dc9b9e0d2e333fe3bbfd0e"
+    },
+    {
+      "path": "src/assets/fonts/plusJakartaSans/PlusJakartaSans-Medium.ttf",
+      "sha1": "c328c76cab7078b89d925d73809f03c12a00143a"
+    },
+    {
+      "path": "src/assets/fonts/plusJakartaSans/PlusJakartaSans-Regular.ttf",
+      "sha1": "ea07d33f23fb6c4856a642d035c463dc99a7f88a"
+    },
+    {
+      "path": "src/assets/fonts/plusJakartaSans/PlusJakartaSans-SemiBold.ttf",
+      "sha1": "576ccf10be11652fc309f3682a327a98847c596e"
+    },
+    {
+      "path": "src/assets/fonts/plusJakartaSans/PlusJakartaSans-SemiBoldItalic.ttf",
+      "sha1": "693c174f75547d2bc28a319a76efb4575ba1bb02"
+    }
+  ]
+}

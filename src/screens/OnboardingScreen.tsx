@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { ErrorBoundary } from '../components/error-boundary';
+import { ErrorBoundary } from '@/providers/error-boundary';
 
 export function OnboardingScreen() {
   return (
